@@ -1,0 +1,92 @@
+SPARK UDF POC FOR UBER DATA ANALYSIS
+====================================
+
+INPUT DATASET:
+--------------
+https://drive.google.com/file/d/0ByJLBTmJojjzS2c2UktqLW5uRG8/view
+
+DATASET DESCRIPTION:
+--------------------
+The Uber dataset consists of 4 columns. And the dataset description is as follows
+
+1. dispatching_base_number
+
+2. date(MM/DD/YY)
+
+3. active_vehicles
+
+4. trips
+
+Problem Statement:
+----------------------
+Find the days on which each basement has more trips.
+
+
+Source Code:
+-------------
+
+hadoop fs -mkdir -p /user/hadoop/input/
+hadoop fs -put /home/cloudera/Downloads/uber /user/hadoop/input/
+spark-shell
+val rdd1 = sc.textFile("hdfs://quickstart.cloudera:8020/user/hadoop/input/uber")
+val header = rdd1.first
+//removal of header from data for data analysis
+val rdd2 = rdd1.filter{ line => line != header}
+val rdd3 = rdd2.map{ line => line.toString() }
+val rdd4 = rdd3.map(_.split(","))
+//case class declaration to impose schema on rdd
+case class ubercase(basenr:String,datemdy:String,activevehicles:Int,trips:Int)
+//IMPOSING THE SCHEMA ON DATA WITH CASE CLASS STRUCTURE
+val df1 = rdd4.map(x=> ubercase(x(0), x(1), x(2).toInt, x(3).toInt)).toDF
+df1.registerTempTable("ubertable")
+sqlContext.sql("select count(*) from ubertable").show
+
+//CUSTOM DATAFRAME UDF DECLARATION AND IMPLEMENTATION IN SCALA
+
+def parsefunc=(date: String) => {
+   val dateformat = new java.text.SimpleDateFormat("MM/dd/yyyy")
+   val daynr = dateformat.parse(date).getDay
+   var days =Array("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
+   val dayname = days(daynr).toString
+   dayname
+}
+//REGISTERING THE UDF
+sqlContext.udf.register("parseFuncAlias",parsefunc)
+//STORING THE DATA IN DATAFRAME
+val df2 = sqlContext.sql("select basenr, parseFuncAlias(datemdy) as dayname, sum(trips) as total_trips from ubertable group by basenr,parseFuncAlias(datemdy) order by total_trips desc")
+//DISPLAYING THE RESULT
+df2.show()
+
+Output:
+--------
++------+---------+-----------+                                                  
+|basenr|  dayname|total_trips|
++------+---------+-----------+
+|B02764| Saturday|     356789|
+|B02764|   Friday|     326968|
+|B02764| Thursday|     304200|
+|B02764|   Sunday|     249896|
+|B02764|Wednesday|     241137|
+|B02764|  Tuesday|     221343|
+|B02764|   Monday|     214116|
+|B02617| Saturday|     127902|
+|B02617|   Friday|     125067|
+|B02682| Saturday|     120283|
+|B02617| Thursday|     118254|
+|B02682|   Friday|     114662|
+|B02682| Thursday|     106643|
+|B02617|Wednesday|      94887|
+|B02598| Saturday|      94588|
+|B02598|   Friday|      93126|
+|B02617|   Sunday|      91722|
+|B02598| Thursday|      90333|
+|B02617|  Tuesday|      86602|
+|B02682|Wednesday|      86252|
++------+---------+-----------+
+only showing top 20 rows
+
+
+
+
+
+
